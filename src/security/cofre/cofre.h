@@ -2,6 +2,7 @@
 #define COFRE_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define MAX_ENTRIES 100
 #define SALT_SIZE 32
