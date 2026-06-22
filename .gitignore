@@ -1,0 +1,26 @@
+# Compilados
+*.o
+*.obj
+*.exe
+*.out
+*.bin
+*.img
+
+# Diretórios de build
+build/
+bin/
+
+# Arquivos de editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+*.tmp
+*.log
