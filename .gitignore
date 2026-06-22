@@ -9,6 +9,7 @@
 # Diretórios de build
 build/
 bin/
+graphify-out/
 
 # Arquivos de editor/IDE
 .vscode/
