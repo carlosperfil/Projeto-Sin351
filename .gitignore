@@ -3,8 +3,15 @@
 *.obj
 *.exe
 *.out
+
+# Arquivos gerados pelos projetos
 *.bin
 *.img
+
+# Executáveis dos projetos (Linux)
+projeto1-vsfs/vsfs
+projeto2-raid1/raid1
+projeto3-cofre/cofre
 
 # Diretórios de build
 build/
