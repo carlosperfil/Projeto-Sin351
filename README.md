@@ -200,6 +200,12 @@ cd projeto3-cofre && bash test_cofre.sh && cd ..
         <sub><b>Carlos</b></sub>
       </a>
     </td>
+    <td align="center">
+      <a href="https://github.com/VictorVieira540">
+        <img src="https://github.com/VictorVieira540.png" width="100px;" alt="Victor"/><br />
+        <sub><b>Victor</b></sub>
+      </a>
+    </td>
   </tr>
 </table>
 
