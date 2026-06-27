@@ -8,6 +8,6 @@ $(TARGET): raid1.c main_raid1.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
-	rm -f $(TARGET) disk0.bin disk1.bin raid_log.bin
+	rm -f $(TARGET) disco_fisico_0.bin disco_fisico_1.bin registro_transacoes.bin
 
 .PHONY: all clean

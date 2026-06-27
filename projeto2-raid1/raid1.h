@@ -1,36 +1,36 @@
-#ifndef RAID1_H
-#define RAID1_H
+#ifndef ESPELHAMENTO_RAID1_H
+#define ESPELHAMENTO_RAID1_H
 
 #include <stdint.h>
 
-#define BLOCK_SIZE 4096
-#define NUM_BLOCKS 256
-#define NUM_DISKS 2
+#define TAMANHO_BLOCO_RAID 4096
+#define TOTAL_BLOCOS_RAID 256
+#define QTD_DISCOS_FISICOS 2
 
 typedef enum {
-    TX_PENDING = 0,
-    TX_COMMITTED = 1
-} log_status_t;
+    STATUS_PENDENTE = 0,
+    STATUS_EFETIVADO = 1
+} status_transacao_t;
 
-struct log_entry {
-    int transaction_id;
-    int block_id;
-    log_status_t status;
-    char data[BLOCK_SIZE];
+struct registro_log {
+    int id_transacao;
+    int id_bloco;
+    status_transacao_t status;
+    char conteudo[TAMANHO_BLOCO_RAID];
 };
 
-struct raid_inode {
-    int file_id;
-    int logical_block_id; // mapeado pro mesmo offset nos 2 discos físicos
-    int size;
-    int type;
+struct inode_espelhado {
+    int id_arquivo;
+    int bloco_logico; // mapeia para os mesmos offsets fisicos
+    int tamanho_bytes;
+    int tipo_arquivo;
 };
 
-int raid1_init(void);
-int raid1_write(int block_id, const char* buffer, int size);
-char* raid1_read(int block_id, int disk_num);
-int raid1_verify(void);
-int raid1_recover(void);
-void raid1_status(void);
+int inicializar_espelhamento(void);
+int gravar_dado_espelhado(int id_bloco, const char* texto, int tamanho);
+char* ler_dado_fisico(int id_bloco, int num_disco);
+int verificar_integridade(void);
+int recuperar_falhas_log(void);
+void exibir_saude_raid(void);
 
 #endif

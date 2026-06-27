@@ -8,6 +8,6 @@ $(TARGET): vsfs.c main_vsfs.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
-	rm -f $(TARGET) disco.img
+	rm -f $(TARGET) disco_virtual.img
 
 .PHONY: all clean

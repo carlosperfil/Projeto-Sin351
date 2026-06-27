@@ -3,166 +3,217 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int get_bit(unsigned char byte, int bit) {
-    return (byte >> bit) & 1;
+// Funcao auxiliar para checar se um bit esta livre (0) ou ocupado (1)
+static int checar_bit(unsigned char byte, int posicao) {
+    return (byte & (1 << posicao)) != 0;
 }
 
-static void set_bit(unsigned char *byte, int bit) {
-    *byte |= (1 << bit);
+// Funcao auxiliar para marcar um bit como ocupado (1)
+static void ligar_bit(unsigned char *byte, int posicao) {
+    *byte = *byte | (1 << posicao);
 }
 
-int vsfs_format(const char* disk_name) {
-    FILE *f = fopen(disk_name, "wb");
-    if (!f) return -1;
-    
-    // Zera o arquivo de tamanho total
-    char empty_block[BLOCK_SIZE] = {0};
-    for(int i=0; i<NUM_BLOCKS; i++) {
-        fwrite(empty_block, 1, BLOCK_SIZE, f);
+int formatar_disco_virtual(const char* nome_disco) {
+    FILE *arquivo_disco = fopen(nome_disco, "wb");
+    if (arquivo_disco == NULL) {
+        return -1;
     }
     
-    // Superbloco (Bloco 0)
-    struct superblock sb;
-    sb.magic = MAGIC_NUMBER;
-    sb.num_inodes = (NUM_INODE_BLOCKS * BLOCK_SIZE) / sizeof(struct inode);
-    sb.num_data_blocks = NUM_BLOCKS - 3 - NUM_INODE_BLOCKS;
-    sb.inode_bitmap_start = 1;
-    sb.data_bitmap_start = 2;
-    sb.inode_table_start = 3;
-    sb.data_start = 3 + NUM_INODE_BLOCKS;
+    // Preenche o disco inteiro com zeros
+    char bloco_vazio[TAMANHO_BLOCO];
+    memset(bloco_vazio, 0, TAMANHO_BLOCO); // Forma diferente de zerar
     
-    fseek(f, 0, SEEK_SET);
-    fwrite(&sb, sizeof(struct superblock), 1, f);
-    fclose(f);
+    for (int idx = 0; idx < TOTAL_BLOCOS; idx++) {
+        fwrite(bloco_vazio, 1, TAMANHO_BLOCO, arquivo_disco);
+    }
+    
+    // Configura o super bloco na posicao 0
+    struct super_bloco sb;
+    sb.assinatura = ASSINATURA_DISCO;
+    sb.max_descritores = (BLOCOS_PARA_DESCRITORES * TAMANHO_BLOCO) / sizeof(struct descritor_arq);
+    sb.max_blocos_dados = TOTAL_BLOCOS - 3 - BLOCOS_PARA_DESCRITORES;
+    sb.inicio_mapa_descritores = 1;
+    sb.inicio_mapa_dados = 2;
+    sb.inicio_tabela_descritores = 3;
+    sb.inicio_area_dados = 3 + BLOCOS_PARA_DESCRITORES;
+    
+    // Volta pro comeco e salva
+    fseek(arquivo_disco, 0, SEEK_SET);
+    fwrite(&sb, sizeof(struct super_bloco), 1, arquivo_disco);
+    fclose(arquivo_disco);
+    
     return 0;
 }
 
-// Simples alocador de bit linear
-static int alloc_bit(FILE *f, int bitmap_start, int max_bits) {
-    fseek(f, bitmap_start * BLOCK_SIZE, SEEK_SET);
-    unsigned char block[BLOCK_SIZE];
-    fread(block, 1, BLOCK_SIZE, f);
-    for(int i = 0; i < max_bits; i++) {
-        int byte_idx = i / 8;
-        int bit_idx = i % 8;
-        if (get_bit(block[byte_idx], bit_idx) == 0) {
-            set_bit(&block[byte_idx], bit_idx);
-            fseek(f, bitmap_start * BLOCK_SIZE, SEEK_SET);
-            fwrite(block, 1, BLOCK_SIZE, f);
-            return i;
-        }
-    }
-    return -1;
-}
-
-static void read_inode(FILE *f, struct superblock *sb, int inumber, struct inode *in) {
-    int inode_offset = (sb->inode_table_start * BLOCK_SIZE) + (inumber * sizeof(struct inode));
-    fseek(f, inode_offset, SEEK_SET);
-    fread(in, sizeof(struct inode), 1, f);
-}
-
-static void write_inode(FILE *f, struct superblock *sb, int inumber, struct inode *in) {
-    int inode_offset = (sb->inode_table_start * BLOCK_SIZE) + (inumber * sizeof(struct inode));
-    fseek(f, inode_offset, SEEK_SET);
-    fwrite(in, sizeof(struct inode), 1, f);
-}
-
-int write_file(const char* disk_name, const char* content, int size) {
-    FILE *f = fopen(disk_name, "r+b");
-    if (!f) return -1;
+// Alocador simples que varre o mapa de bits
+static int reservar_bloco_livre(FILE *arquivo_disco, int bloco_mapa, int limite_bits) {
+    unsigned char buffer_mapa[TAMANHO_BLOCO];
     
-    struct superblock sb;
-    fread(&sb, sizeof(struct superblock), 1, f);
+    fseek(arquivo_disco, bloco_mapa * TAMANHO_BLOCO, SEEK_SET);
+    fread(buffer_mapa, 1, TAMANHO_BLOCO, arquivo_disco);
     
-    int inumber = alloc_bit(f, sb.inode_bitmap_start, sb.num_inodes);
-    if (inumber < 0) { fclose(f); return -1; }
-    
-    struct inode in = {0};
-    in.size = size;
-    in.type = 1; // regular file
-    for(int i=0; i<NUM_DIRECT_PTRS; i++) in.direct[i] = -1;
-    in.indirect = -1;
-    
-    int bytes_written = 0;
-    int ptr_idx = 0;
-    
-    while(bytes_written < size && ptr_idx < NUM_DIRECT_PTRS) {
-        int dblock = alloc_bit(f, sb.data_bitmap_start, sb.num_data_blocks);
-        if (dblock < 0) break;
-        in.direct[ptr_idx++] = dblock;
+    for (int bit_atual = 0; bit_atual < limite_bits; bit_atual++) {
+        int indice_byte = bit_atual / 8;
+        int bit_no_byte = bit_atual % 8;
         
-        int to_write = size - bytes_written;
-        if(to_write > BLOCK_SIZE) to_write = BLOCK_SIZE;
-        
-        fseek(f, (sb.data_start + dblock) * BLOCK_SIZE, SEEK_SET);
-        fwrite(content + bytes_written, 1, to_write, f);
-        bytes_written += to_write;
-    }
-    
-    write_inode(f, &sb, inumber, &in);
-    fclose(f);
-    return inumber;
-}
-
-char* read_file(const char* disk_name, int inumber) {
-    FILE *f = fopen(disk_name, "rb");
-    if (!f) return NULL;
-    
-    struct superblock sb;
-    fread(&sb, sizeof(struct superblock), 1, f);
-    
-    struct inode in;
-    read_inode(f, &sb, inumber, &in);
-    
-    if (in.size == 0) { fclose(f); return NULL; }
-    
-    char* buffer = malloc(in.size + 1);
-    int bytes_read = 0;
-    
-    for(int i=0; i<NUM_DIRECT_PTRS; i++) {
-        if(in.direct[i] != -1) {
-            int to_read = in.size - bytes_read;
-            if(to_read > BLOCK_SIZE) to_read = BLOCK_SIZE;
+        // Se o bit é zero, achamos um espaco livre
+        if (!checar_bit(buffer_mapa[indice_byte], bit_no_byte)) {
+            ligar_bit(&buffer_mapa[indice_byte], bit_no_byte);
             
-            fseek(f, (sb.data_start + in.direct[i]) * BLOCK_SIZE, SEEK_SET);
-            fread(buffer + bytes_read, 1, to_read, f);
-            bytes_read += to_read;
+            // Salva a alteracao no disco
+            fseek(arquivo_disco, bloco_mapa * TAMANHO_BLOCO, SEEK_SET);
+            fwrite(buffer_mapa, 1, TAMANHO_BLOCO, arquivo_disco);
+            
+            return bit_atual; // Retorna o ID alocado
         }
     }
-    buffer[bytes_read] = '\0';
-    fclose(f);
-    return buffer;
+    return -1; // Disco cheio
 }
 
-void vsfs_info(const char* disk_name) {
-    FILE *f = fopen(disk_name, "rb");
-    if (!f) { printf("Erro ao abrir disco.\n"); return; }
-    struct superblock sb;
-    fread(&sb, sizeof(struct superblock), 1, f);
-    printf("--- VSFS Superbloco Info ---\n");
-    printf("Magic Number: 0x%X\n", sb.magic);
-    printf("Max Inodes: %d\n", sb.num_inodes);
-    printf("Max Blocos de Dados: %d\n", sb.num_data_blocks);
-    fclose(f);
+static void recuperar_descritor(FILE *arq, struct super_bloco *sb, int id, struct descritor_arq *desc) {
+    int endereco_fisico = (sb->inicio_tabela_descritores * TAMANHO_BLOCO) + (id * sizeof(struct descritor_arq));
+    fseek(arq, endereco_fisico, SEEK_SET);
+    fread(desc, sizeof(struct descritor_arq), 1, arq);
 }
 
-void vsfs_list(const char* disk_name) {
-    FILE *f = fopen(disk_name, "rb");
-    if (!f) { printf("Erro ao abrir disco.\n"); return; }
-    struct superblock sb;
-    fread(&sb, sizeof(struct superblock), 1, f);
+static void salvar_descritor(FILE *arq, struct super_bloco *sb, int id, struct descritor_arq *desc) {
+    int endereco_fisico = (sb->inicio_tabela_descritores * TAMANHO_BLOCO) + (id * sizeof(struct descritor_arq));
+    fseek(arq, endereco_fisico, SEEK_SET);
+    fwrite(desc, sizeof(struct descritor_arq), 1, arq);
+}
+
+int gravar_arquivo(const char* nome_disco, const char* conteudo, int tamanho) {
+    FILE *arq = fopen(nome_disco, "r+b");
+    if (!arq) return -1;
     
-    fseek(f, sb.inode_bitmap_start * BLOCK_SIZE, SEEK_SET);
-    unsigned char ibmap[BLOCK_SIZE];
-    fread(ibmap, 1, BLOCK_SIZE, f);
+    struct super_bloco metadados;
+    fread(&metadados, sizeof(struct super_bloco), 1, arq);
     
-    printf("--- VSFS Arquivos (Inodes) ---\n");
-    for(int i=0; i<sb.num_inodes; i++) {
-        if(get_bit(ibmap[i/8], i%8)) {
-            struct inode in;
-            read_inode(f, &sb, i, &in);
-            printf("Inode %d: Tamanho %d bytes\n", i, in.size);
+    int id_alocado = reservar_bloco_livre(arq, metadados.inicio_mapa_descritores, metadados.max_descritores);
+    if (id_alocado < 0) { 
+        fclose(arq); 
+        return -1; 
+    }
+    
+    struct descritor_arq novo_arq;
+    memset(&novo_arq, 0, sizeof(struct descritor_arq)); // Zera a struct
+    
+    novo_arq.tamanho_bytes = tamanho;
+    novo_arq.tipo_arquivo = 1; // 1 significa arquivo de texto normal
+    
+    for (int k = 0; k < MAX_PONTEIROS_DIRETOS; k++) {
+        novo_arq.pont_diretos[k] = -1;
+    }
+    novo_arq.pont_indireto = -1;
+    
+    int total_gravado = 0;
+    int ptr_atual = 0;
+    
+    while (total_gravado < tamanho && ptr_atual < MAX_PONTEIROS_DIRETOS) {
+        int id_bloco_dados = reservar_bloco_livre(arq, metadados.inicio_mapa_dados, metadados.max_blocos_dados);
+        if (id_bloco_dados < 0) break;
+        
+        novo_arq.pont_diretos[ptr_atual] = id_bloco_dados;
+        ptr_atual++;
+        
+        int qtd_escrever = tamanho - total_gravado;
+        if (qtd_escrever > TAMANHO_BLOCO) {
+            qtd_escrever = TAMANHO_BLOCO;
+        }
+        
+        int offset_dados = (metadados.inicio_area_dados + id_bloco_dados) * TAMANHO_BLOCO;
+        fseek(arq, offset_dados, SEEK_SET);
+        fwrite(conteudo + total_gravado, 1, qtd_escrever, arq);
+        
+        total_gravado += qtd_escrever;
+    }
+    
+    salvar_descritor(arq, &metadados, id_alocado, &novo_arq);
+    fclose(arq);
+    
+    return id_alocado;
+}
+
+char* ler_arquivo(const char* nome_disco, int id_descritor) {
+    FILE *arq = fopen(nome_disco, "rb");
+    if (arq == NULL) return NULL;
+    
+    struct super_bloco metadados;
+    fread(&metadados, sizeof(struct super_bloco), 1, arq);
+    
+    struct descritor_arq info_arq;
+    recuperar_descritor(arq, &metadados, id_descritor, &info_arq);
+    
+    if (info_arq.tamanho_bytes == 0) { 
+        fclose(arq); 
+        return NULL; 
+    }
+    
+    char* texto_saida = (char*) malloc(info_arq.tamanho_bytes + 1);
+    int total_lido = 0;
+    
+    for (int k = 0; k < MAX_PONTEIROS_DIRETOS; k++) {
+        if (info_arq.pont_diretos[k] != -1) {
+            int qtd_ler = info_arq.tamanho_bytes - total_lido;
+            if (qtd_ler > TAMANHO_BLOCO) {
+                qtd_ler = TAMANHO_BLOCO;
+            }
+            
+            int offset = (metadados.inicio_area_dados + info_arq.pont_diretos[k]) * TAMANHO_BLOCO;
+            fseek(arq, offset, SEEK_SET);
+            fread(texto_saida + total_lido, 1, qtd_ler, arq);
+            
+            total_lido += qtd_ler;
         }
     }
-    fclose(f);
+    
+    texto_saida[total_lido] = '\0'; // Finaliza a string
+    fclose(arq);
+    
+    return texto_saida;
+}
+
+void exibir_info_disco(const char* nome_disco) {
+    FILE *arq = fopen(nome_disco, "rb");
+    if (!arq) { 
+        printf("Falha ao montar o disco virtual.\n"); 
+        return; 
+    }
+    
+    struct super_bloco metadados;
+    fread(&metadados, sizeof(struct super_bloco), 1, arq);
+    
+    printf("--- SUPER BLOCO ---\n");
+    printf("Assinatura: 0x%X\n", metadados.assinatura);
+    printf("Capacidade de Arquivos (Descritores): %d\n", metadados.max_descritores);
+    printf("Capacidade de Blocos de Dados: %d\n", metadados.max_blocos_dados);
+    fclose(arq);
+}
+
+void listar_arquivos_salvos(const char* nome_disco) {
+    FILE *arq = fopen(nome_disco, "rb");
+    if (!arq) { 
+        printf("Falha ao acessar disco virtual.\n"); 
+        return; 
+    }
+    
+    struct super_bloco metadados;
+    fread(&metadados, sizeof(struct super_bloco), 1, arq);
+    
+    fseek(arq, metadados.inicio_mapa_descritores * TAMANHO_BLOCO, SEEK_SET);
+    unsigned char mapa[TAMANHO_BLOCO];
+    fread(mapa, 1, TAMANHO_BLOCO, arq);
+    
+    printf("--- ARQUIVOS PRESENTES ---\n");
+    for (int j = 0; j < metadados.max_descritores; j++) {
+        int indice_byte = j / 8;
+        int bit_no_byte = j % 8;
+        
+        if (checar_bit(mapa[indice_byte], bit_no_byte)) {
+            struct descritor_arq arq_temp;
+            recuperar_descritor(arq, &metadados, j, &arq_temp);
+            printf("Arquivo ID %d - Ocupando %d bytes no disco\n", j, arq_temp.tamanho_bytes);
+        }
+    }
+    fclose(arq);
 }

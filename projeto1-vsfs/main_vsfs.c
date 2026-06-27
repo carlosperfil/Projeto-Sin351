@@ -5,54 +5,62 @@
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        printf("Uso: %s <comando> [argumentos]\n", argv[0]);
-        printf("Comandos:\n");
-        printf("  format                  Formata o disco.img\n");
-        printf("  write <string>          Escreve string como arquivo\n");
-        printf("  read <inumber>          Lê arquivo pelo inode\n");
-        printf("  info                    Mostra informacoes do superbloco\n");
-        printf("  list                    Lista inodes alocados\n");
+        printf("Como usar: %s <operacao> [argumentos]\n", argv[0]);
+        printf("Operacoes suportadas:\n");
+        printf("  formatar              -> Zera e cria o disco_virtual.img\n");
+        printf("  escrever <texto>      -> Salva o texto como um novo arquivo\n");
+        printf("  ler <id_arquivo>      -> Exibe o texto de um arquivo especifico\n");
+        printf("  status                -> Exibe dados do super bloco\n");
+        printf("  listar                -> Mostra arquivos gravados no disco\n");
         return 1;
     }
 
-    const char* disk = "disco.img";
+    const char* arquivo_disco = "disco_virtual.img";
 
-    if (strcmp(argv[1], "format") == 0) {
-        if(vsfs_format(disk) == 0) {
-            printf("Disco '%s' formatado com sucesso.\n", disk);
+    if (strcmp(argv[1], "formatar") == 0) {
+        if (formatar_disco_virtual(arquivo_disco) == 0) {
+            printf("Sucesso: '%s' foi formatado e esta pronto.\n", arquivo_disco);
         } else {
-            printf("Erro ao formatar.\n");
+            printf("Erro grave ao tentar formatar.\n");
         }
     } 
-    else if (strcmp(argv[1], "write") == 0) {
-        if (argc < 3) { printf("Forneca a string para escrever.\n"); return 1; }
-        const char* text = argv[2];
-        int inumber = write_file(disk, text, strlen(text));
-        if (inumber >= 0) {
-            printf("Arquivo gravado no Inode %d.\n", inumber);
+    else if (strcmp(argv[1], "escrever") == 0) {
+        if (argc < 3) { 
+            printf("Faltou o texto para salvar. Tente: escrever \"meu texto\"\n"); 
+            return 1; 
+        }
+        int id_recebido = gravar_arquivo(arquivo_disco, argv[2], strlen(argv[2]));
+        if (id_recebido >= 0) {
+            printf("Feito! Arquivo salvo com o ID = %d.\n", id_recebido);
         } else {
-            printf("Erro ao gravar arquivo (disco cheio?).\n");
+            printf("Falha na gravacao. Disco cheio?\n");
         }
     }
-    else if (strcmp(argv[1], "read") == 0) {
-        if (argc < 3) { printf("Forneca o inumber.\n"); return 1; }
-        int inumber = atoi(argv[2]);
-        char* content = read_file(disk, inumber);
-        if (content) {
-            printf("Conteudo (Inode %d):\n%s\n", inumber, content);
-            free(content);
+    else if (strcmp(argv[1], "ler") == 0) {
+        if (argc < 3) { 
+            printf("Faltou o ID do arquivo para ler.\n"); 
+            return 1; 
+        }
+        int identificador = atoi(argv[2]);
+        char* texto = ler_arquivo(arquivo_disco, identificador);
+        
+        if (texto != NULL) {
+            printf("==============================\n");
+            printf("Conteudo do Arquivo [%d]:\n%s\n", identificador, texto);
+            printf("==============================\n");
+            free(texto);
         } else {
-            printf("Erro ao ler inode %d.\n", inumber);
+            printf("Arquivo ID %d nao existe ou esta vazio.\n", identificador);
         }
     }
-    else if (strcmp(argv[1], "info") == 0) {
-        vsfs_info(disk);
+    else if (strcmp(argv[1], "status") == 0) {
+        exibir_info_disco(arquivo_disco);
     }
-    else if (strcmp(argv[1], "list") == 0) {
-        vsfs_list(disk);
+    else if (strcmp(argv[1], "listar") == 0) {
+        listar_arquivos_salvos(arquivo_disco);
     }
     else {
-        printf("Comando desconhecido.\n");
+        printf("Operacao invalida. Digite sem argumentos para ver o menu.\n");
     }
 
     return 0;

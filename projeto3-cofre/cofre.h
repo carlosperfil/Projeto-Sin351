@@ -1,36 +1,36 @@
-#ifndef COFRE_H
-#define COFRE_H
+#ifndef COFRE_SENHAS_H
+#define COFRE_SENHAS_H
 
 #include <stdint.h>
 #include <stddef.h>
 
-#define MAX_ENTRIES 100
-#define SALT_SIZE 32
-#define KEY_SIZE 32 // 256 bits for AES
-#define IV_SIZE 16
+#define LIMITE_SENHAS 100
+#define TAMANHO_SAL 32
+#define TAMANHO_CHAVE 32 // 256 bits para AES
+#define TAMANHO_VETOR_INICIALIZACAO 16
 
-struct entry {
-    char site[128];
-    char username[64];
-    char password[128];
+struct registro_senha {
+    char nome_site[128];
+    char nome_usuario[64];
+    char senha_texto[128];
 };
 
-struct vault_header {
-    int magic;
-    char salt[SALT_SIZE];
-    unsigned char master_hash[32]; // SHA256 of master pass
-    int num_entries;
+struct cabecalho_cofre {
+    int identificador_magico;
+    char sal_aleatorio[TAMANHO_SAL];
+    unsigned char hash_autenticacao[32]; // SHA256 da chave mestra
+    int quantidade_registros;
 };
 
-// Autenticacao
-int vault_create(const char* file, const char* master_pass);
-int vault_authenticate(const char* file, const char* master_pass, unsigned char* derived_key);
+// Funcoes de Autenticacao
+int criar_novo_cofre(const char* arquivo, const char* senha_mestra);
+int validar_acesso_cofre(const char* arquivo, const char* senha_mestra, unsigned char* chave_gerada);
 
-// Gerenciamento
-struct entry* vault_load(const char* file, const unsigned char* key, int* count);
-int vault_save(const char* file, const unsigned char* key, struct entry* entries, int count);
+// Gerenciamento dos Dados
+struct registro_senha* carregar_senhas_memoria(const char* arquivo, const unsigned char* chave, int* qtd_atual);
+int salvar_senhas_disco(const char* arquivo, const unsigned char* chave, struct registro_senha* vetor_registros, int qtd_atual);
 
-// Wipe de seguranca
-void secure_wipe(void* mem, size_t size);
+// Protecao de Memoria
+void limpar_memoria_sensivel(void* endereco_memoria, size_t capacidade);
 
 #endif

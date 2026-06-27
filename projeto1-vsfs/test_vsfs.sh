@@ -5,31 +5,31 @@ echo "============================================"
 echo ""
 
 echo "[1/7] Formatando disco virtual..."
-./vsfs format
+./vsfs formatar
 echo ""
 
 echo "[2/7] Exibindo informacoes do superbloco..."
-./vsfs info
+./vsfs status
 echo ""
 
 echo "[3/7] Escrevendo primeiro arquivo..."
-./vsfs write "Ola Mundo VSFS"
+./vsfs escrever "Ola Mundo VSFS"
 echo ""
 
 echo "[4/7] Escrevendo segundo arquivo..."
-./vsfs write "Segundo arquivo de teste"
+./vsfs escrever "Segundo arquivo de teste"
 echo ""
 
-echo "[5/7] Listando inodes alocados..."
-./vsfs list
+echo "[5/7] Listando arquivos salvos..."
+./vsfs listar
 echo ""
 
-echo "[6/7] Lendo inode 0..."
-./vsfs read 0
+echo "[6/7] Lendo arquivo 0..."
+./vsfs ler 0
 echo ""
 
-echo "[7/7] Lendo inode 1..."
-./vsfs read 1
+echo "[7/7] Lendo arquivo 1..."
+./vsfs ler 1
 echo ""
 
 echo "============================================"
